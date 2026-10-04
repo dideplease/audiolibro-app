@@ -701,7 +701,7 @@ async function renderLibrary() {
         </h3>
         <p class="author" data-action="edit-author" title="Clic para editar autor">
           <span class="author-text">${escapeHTML(meta.author) || "Autor desconocido"}</span>
-          <span class="edit-icon">✏️</span>
+          <span class="edit-icon">✏️️</span>
           <span style="color:#666;font-size:0.75rem;">${chapterInfo}</span>
         </p>
         <p class="synopsis">${escapeHTML(meta.synopsis) || "Sin sinopsis disponible."}</p>
@@ -828,7 +828,7 @@ const AUDIO_EXTENSIONS = [".mp3",".m4a",".m4b",".aac",".ogg",".opus",".wav",".fl
 const SUBTITLE_EXTENSIONS = [".srt"];
 
 const ORIG_FOLDER_NAMES = ["original","originales","orig","source","source subtitle"];
-const TRAD_FOLDER_NAMES = ["traduccion","traducción","traducciones","translation","translation subtitle","es","spanish","sub","subtitulos","subtítulos"];
+const TRAD_FOLDER_NAMES = ["traduccion","traducción","traducciones","translation","translation subtitle","subtitulos","subtítulos"];
 
 function isAudioFile(name) { return AUDIO_EXTENSIONS.some(ext => name.toLowerCase().endsWith(ext)); }
 function isSubtitleFile(name) { return SUBTITLE_EXTENSIONS.some(ext => name.toLowerCase().endsWith(ext)); }
@@ -837,8 +837,8 @@ function detectFolderType(relativePath) {
   const parts = relativePath.split("/").map(p => p.toLowerCase());
   for (let i = 0; i < parts.length - 1; i++) {
     const folder = parts[i].normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (ORIG_FOLDER_NAMES.some(n => folder.includes(n))) return "original";
-    if (TRAD_FOLDER_NAMES.some(n => folder.includes(n))) return "translation";
+    if (ORIG_FOLDER_NAMES.some(n => folder === n || folder.includes(n))) return "original";
+    if (TRAD_FOLDER_NAMES.some(n => folder === n || folder.includes(n))) return "translation";
   }
   return null;
 }
@@ -1334,55 +1334,115 @@ function goToSubtitle(direction) {
 }
 
 // ============================================================
-// CARGA MANUAL DE SUBTÍTULOS
+// CARGA MANUAL Y CARPETA DE SUBTÍTULOS
 // ============================================================
-document.getElementById("btnLoadSubOrig").onclick = () => {
-  const input = document.getElementById("subOrigInput");
-  input.value = "";
-  input.click();
-};
+// Crear o reutilizar un input oculto para seleccionar carpetas de subtítulos
+let subFolderInput = document.getElementById("subFolderInput");
+if (!subFolderInput) {
+  subFolderInput = document.createElement("input");
+  subFolderInput.type = "file";
+  subFolderInput.id = "subFolderInput";
+  subFolderInput.webkitdirectory = true;
+  subFolderInput.style.display = "none";
+  document.body.appendChild(subFolderInput);
+}
 
-document.getElementById("btnLoadSubTrad").onclick = () => {
-  const input = document.getElementById("subTradInput");
-  input.value = "";
-  input.click();
-};
+const btnLoadSubOrig = document.getElementById("btnLoadSubOrig");
+if (btnLoadSubOrig) {
+  btnLoadSubOrig.onclick = () => {
+    subFolderInput.dataset.subType = "folder";
+    subFolderInput.value = "";
+    subFolderInput.click();
+  };
+}
 
-document.getElementById("subOrigInput").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file || !currentBook) return;
-  const chapter = currentBook.chapters[currentChapterIndex];
-  if (!chapter) return;
+const btnLoadSubTrad = document.getElementById("btnLoadSubTrad");
+if (btnLoadSubTrad) {
+  btnLoadSubTrad.onclick = () => {
+    const input = document.getElementById("subTradInput");
+    if (input) {
+      input.value = "";
+      input.click();
+    }
+  };
+}
 
-  const subId = currentBook.id + "_sub_orig_ch" + currentChapterIndex;
-  await idbPut(STORE_SUBTITLES, { id: subId, blob: file });
-
-  const meta = await idbGet(STORE_META, currentBook.id);
-  if (meta && meta.chapters[currentChapterIndex]) {
-    meta.chapters[currentChapterIndex].subtitleOriginalId = subId;
-    await idbPut(STORE_META, meta);
-    currentBook = meta;
-  }
-  await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
-});
-
-document.getElementById("subTradInput").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file || !currentBook) return;
-  const chapter = currentBook.chapters[currentChapterIndex];
-  if (!chapter) return;
-
-  const subId = currentBook.id + "_sub_trad_ch" + currentChapterIndex;
-  await idbPut(STORE_SUBTITLES, { id: subId, blob: file });
+subFolderInput.addEventListener("change", async (e) => {
+  const allSubFiles = Array.from(e.target.files).filter(f => isSubtitleFile(f.name));
+  if (allSubFiles.length === 0 || !currentBook) return;
 
   const meta = await idbGet(STORE_META, currentBook.id);
-  if (meta && meta.chapters[currentChapterIndex]) {
-    meta.chapters[currentChapterIndex].subtitleTranslationId = subId;
-    await idbPut(STORE_META, meta);
-    currentBook = meta;
+  if (!meta) return;
+
+  for (let i = 0; i < meta.chapters.length; i++) {
+    const chapter = meta.chapters[i];
+    const chapterBaseName = chapter.fileName.replace(/\.[^/.]+$/, "").toLowerCase();
+
+    for (const sub of allSubFiles) {
+      const subBaseName = sub.name.replace(/\.[^/.]+$/, "").toLowerCase();
+      if (subBaseName !== chapterBaseName) continue;
+
+      const type = detectFolderType(sub.webkitRelativePath || sub.name);
+
+      if (type === "original" || !type) {
+        const subId = currentBook.id + "_sub_orig_ch" + i;
+        await idbPut(STORE_SUBTITLES, { id: subId, blob: sub });
+        meta.chapters[i].subtitleOriginalId = subId;
+      } else if (type === "translation") {
+        const subId = currentBook.id + "_sub_trad_ch" + i;
+        await idbPut(STORE_SUBTITLES, { id: subId, blob: sub });
+        meta.chapters[i].subtitleTranslationId = subId;
+      }
+    }
   }
+
+  await idbPut(STORE_META, meta);
+  currentBook = meta;
   await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
+  updateSubtitles(player.currentTime);
 });
+
+const subOrigInput = document.getElementById("subOrigInput");
+if (subOrigInput) {
+  subOrigInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentBook) return;
+    const chapter = currentBook.chapters[currentChapterIndex];
+    if (!chapter) return;
+
+    const subId = currentBook.id + "_sub_orig_ch" + currentChapterIndex;
+    await idbPut(STORE_SUBTITLES, { id: subId, blob: file });
+
+    const meta = await idbGet(STORE_META, currentBook.id);
+    if (meta && meta.chapters[currentChapterIndex]) {
+      meta.chapters[currentChapterIndex].subtitleOriginalId = subId;
+      await idbPut(STORE_META, meta);
+      currentBook = meta;
+    }
+    await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
+  });
+}
+
+const subTradInput = document.getElementById("subTradInput");
+if (subTradInput) {
+  subTradInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentBook) return;
+    const chapter = currentBook.chapters[currentChapterIndex];
+    if (!chapter) return;
+
+    const subId = currentBook.id + "_sub_trad_ch" + currentChapterIndex;
+    await idbPut(STORE_SUBTITLES, { id: subId, blob: file });
+
+    const meta = await idbGet(STORE_META, currentBook.id);
+    if (meta && meta.chapters[currentChapterIndex]) {
+      meta.chapters[currentChapterIndex].subtitleTranslationId = subId;
+      await idbPut(STORE_META, meta);
+      currentBook = meta;
+    }
+    await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
+  });
+}
 
 // ============================================================
 // PANEL DE AJUSTES

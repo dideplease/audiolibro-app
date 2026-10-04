@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lector de Audiolibros & Subtítulos</title>
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-bg: #1e1e1e;
+      --accent-color: #bb86fc;
+      --text-color: #e0e0e0;
+      --text-muted: #a0a0a0;
+      --danger: #cf6679;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: var(--card-bg);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+
+    .logo { font-size: 1.2rem; font-weight: bold; color: var(--accent-color); }
+    .header-controls { display: flex; gap: 0.5rem; align-items: center; }
+
+    button {
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border: 1px solid #333;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 0.9rem;
+    }
+    button:hover { background-color: #333; }
+    button.btn-accent { background-color: var(--accent-color); color: #000; font-weight: bold; border: none; }
+    button.btn-accent:hover { opacity: 0.9; }
+
+    main { padding: 2rem; flex: 1; }
+
+    /* GRID DE LA BIBLIOTECA */
+    .library {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      position: relative;
+    }
+
+    .cover-wrapper { position: relative; width: 100%; aspect-ratio: 1; cursor: pointer; background: #000; }
+    .cover { width: 100%; height: 100%; object-fit: cover; }
+    
+    .card-body { padding: 1rem; display: flex; flex-direction: column; flex: 1; }
+    .progress { height: 4px; background: #333; margin-bottom: 0.8rem; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent-color); width: 0%; }
+
+    .card h3 { font-size: 1rem; margin-bottom: 0.3rem; cursor: pointer; display: flex; justify-content: space-between; }
+    .card .author { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; cursor: pointer; }
+    .card .synopsis { font-size: 0.8rem; color: #888; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 1rem; }
+    
+    .card-actions { margin-top: auto; display: flex; gap: 0.5rem; }
+    .btn-play { flex: 1; background-color: var(--accent-color); color: #000; border: none; font-weight: bold; }
+    .btn-delete { background-color: transparent; color: var(--danger); border: 1px solid var(--danger); }
+
+    .edit-input { background: #333; color: #fff; border: 1px solid var(--accent-color); width: 100%; padding: 0.2rem; border-radius: 4px; }
+
+    /* MODAL REPRODUCTOR / SESIÓN DE ESTUDIO */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; z-index: 100; }
+    .modal.hidden { display: none; }
+    .modal-header { padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; }
+
+    .modal-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Cabecera del libro dentro del reproductor (A la izquierda) */
+    .player-meta-top {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    .player-cover {
+      width: 70px;
+      height: 70px;
+      object-fit: cover;
+      border-radius: 6px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    .player-info {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+    }
+
+    /* Subtítulos centrados */
+    .subtitles-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      margin: 1rem 0;
+      width: 100%;
+      min-height: 140px;
+    }
+    
+    .sub-orig { font-weight: bold; line-height: 1.4; width: 100%; }
+    .sub-trad { color: var(--text-muted); min-height: 1.5em; transition: filter 0.3s; width: 100%; }
+    .sub-trad.blurred { filter: blur(5px); cursor: pointer; user-select: none; }
+    .sub-trad.blurred.revealed { filter: blur(0); }
+
+    .word { cursor: pointer; display: inline-block; padding: 0 2px; border-radius: 3px; }
+    .word:hover { background: rgba(187, 134, 252, 0.3); color: #fff; }
+
+    .controls-row { display: flex; align-items: center; gap: 1rem; width: 100%; margin-bottom: 1rem; }
+    .progress-bar { flex: 1; accent-color: var(--accent-color); cursor: pointer; }
+
+    .controls-actions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    /* TOOLTIP DICCIONARIO */
+    .tooltip {
+      position: fixed; background: #2a2a2a; color: #fff; padding: 0.8rem 1rem; border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 200; border: 1px solid #444; max-width: 280px; pointer-events: none;
+    }
+    .tooltip.hidden { display: none; }
+    .tooltip-header { font-weight: bold; color: var(--accent-color); margin-bottom: 0.2rem; }
+    .tooltip-pron { font-size: 0.8rem; color: #aaa; margin-bottom: 0.4rem; font-style: italic; }
+    .tooltip-translation.loading { color: #888; font-style: italic; }
+
+    /* PANEL AJUSTES & AUTH */
+    .panel { position: fixed; right: 0; top: 0; bottom: 0; width: 320px; background: var(--card-bg); z-index: 150; padding: 2rem; box-shadow: -4px 0 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; }
+    .panel.hidden { display: none; }
+    .panel-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .panel-group label { font-size: 0.85rem; color: var(--text-muted); }
+    .panel-group input, .panel-group select { background: #2a2a2a; border: 1px solid #444; color: #fff; padding: 0.5rem; border-radius: 4px; }
+
+    /* INPUTS OCULTOS */
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">🎧 Audiolibros Sync</div>
+    <div class="header-controls">
+      <span id="userStatusText" style="font-size:0.85rem; color:#aaa; margin-right:0.5rem;">Invitado</span>
+      <button id="btnAuthModal">🔐 Entrar</button>
+      <button id="btnAddFile">📄 Añadir Archivo</button>
+      <button id="btnAddFolder">📁 Añadir Carpeta</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="library" class="library"></div>
+  </main>
+
+  <!-- MODAL REPRODUCTOR / SESIÓN DE ESTUDIO -->
+  <div id="playerModal" class="modal hidden">
+    <div class="modal-header">
+      <span id="playerChapterInfo" style="font-size: 0.85rem; color: #aaa;">Capítulo 1</span>
+      <div style="display:flex; gap:0.5rem;">
+        <button id="btnSettings">⚙️ Ajustes</button>
+        <button id="btnCloseModal">✕ Cerrar</button>
+      </div>
+    </div>
+    
+    <div class="modal-body">
+      <!-- Portada pequeña arriba a la izquierda -->
+      <div class="player-meta-top">
+        <img id="playerCover" class="player-cover" src="" alt="Portada">
+        <div class="player-info">
+          <h3 id="playerTitle" style="font-size: 1.1rem;">Título del Audiolibro</h3>
+          <p id="playerAuthor" style="color: var(--text-muted); font-size: 0.85rem;">Autor</p>
+        </div>
+      </div>
+
+      <!-- Subtítulos bien centrados -->
+      <div class="subtitles-container">
+        <div id="subtitleOriginal" class="sub-orig"></div>
+        <div id="subtitleTranslation" class="sub-trad"></div>
+      </div>
+
+      <div class="controls-row">
+        <span id="currentTime">00:00</span>
+        <input type="range" id="progressBar" class="progress-bar" min="0" value="0" step="0.1">
+        <span id="duration">00:00</span>
+      </div>
+
+      <div class="controls-actions">
+        <button id="btnBack">⏪ -15s</button>
+        <button id="btnPlay" class="btn-accent" style="font-size:1.2rem; padding:0.6rem 1.5rem;">▶</button>
+        <button id="btnFwd">+15s ⏩</button>
+        <select id="speedSelect" style="background:#2a2a2a; color:#fff; border:1px solid #444; padding:0.4rem; border-radius:4px;">
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1.0x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2.0x</option>
+        </select>
+      </div>
+
+      <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center;">
+        <button id="btnLoadSubOrig" style="font-size: 0.75rem;">+ Subtítulo Orig (.srt)</button>
+        <button id="btnLoadSubTrad" style="font-size: 0.75rem;">+ Subtítulo Trad (.srt)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOOLTIP DICCIONARIO -->
+  <div id="wordTooltip" class="tooltip hidden">
+    <div id="tooltipWord" class="tooltip-header">Word</div>
+    <div id="tooltipPron" class="tooltip-pron"></div>
+    <div id="tooltipTranslation" class="tooltip-translation">Traducción...</div>
+  </div>
+
+  <!-- PANEL DE AJUSTES (ACCESIBLE DESDE LA SESIÓN) -->
+  <div id="settingsPanel" class="panel hidden">
+    <h3>Ajustes de Lectura</h3>
+    <div class="panel-group">
+      <label>Color Texto Original</label>
+      <input type="color" id="setOrigColor" value="#ffffff">
+    </div>
+    <div class="panel-group">
+      <label>Tamaño Original (<span id="setOrigSizeVal">2.2rem</span>)</label>
+      <input type="range" id="setOrigSize" min="1" max="4" step="0.1" value="2.2">
+    </div>
+    <div class="panel-group">
+      <label>Color Traducción</label>
+      <input type="color" id="setTradColor" value="#b8b8b8">
+    </div>
+    <div class="panel-group">
+      <label>Tamaño Traducción (<span id="setTradSizeVal">1.5rem</span>)</label>
+      <input type="range" id="setTradSize" min="0.8" max="3" step="0.1" value="1.5">
+    </div>
+    <div class="panel-group">
+      <label><input type="checkbox" id="setTradBlur"> Desenfocar Traducción</label>
+    </div>
+    <div class="panel-group">
+      <label><input type="checkbox" id="setDictEnabled" checked> Diccionario al pasar el cursor</label>
+    </div>
+    <div class="panel-group">
+      <label>Desfase Subtítulos (<span id="syncValue">0.0s</span>)</label>
+      <div style="display:flex; gap:0.3rem;">
+        <button id="btnSyncMinus">-0.1s</button>
+        <button id="btnSyncReset">0s</button>
+        <button id="btnSyncPlus">+0.1s</button>
+      </div>
+    </div>
+    <button id="btnResetAll" style="margin-top:auto; color:var(--danger); border-color:var(--danger);">Restablecer Todo</button>
+    <button id="btnCloseSettings">Cerrar Ajustes</button>
+  </div>
+
+  <!-- MODAL AUTENTICACIÓN (LOGIN / REGISTRO) -->
+  <div id="authModal" class="panel hidden" style="left:50%; top:50%; transform:translate(-50%, -50%); height:auto; width:300px; border-radius:8px;">
+    <h3 id="authTitle">Iniciar Sesión</h3>
+    <form id="authForm" style="display:flex; flex-direction:column; gap:1rem;">
+      <div class="panel-group">
+        <label>Usuario</label>
+        <input type="text" id="authUsername" required>
+      </div>
+      <div class="panel-group">
+        <label>Contraseña</label>
+        <input type="password" id="authPassword" required>
+      </div>
+      <button type="submit" class="btn-accent" id="btnAuthSubmit">Entrar</button>
+    </form>
+    <p style="font-size:0.8rem; text-align:center; color:#aaa; cursor:pointer;" id="btnToggleAuthMode">¿No tienes cuenta? Regístrate aquí</p>
+    <button id="btnCloseAuth">Cancelar</button>
+  </div>
+
+  <!-- INPUTS DE ARCHIVOS OCULTOS -->
+  <input type="file" id="fileInput" multiple accept="audio/*">
+  <input type="file" id="folderInput" webkitdirectory directory multiple>
+  <input type="file" id="coverInput" accept="image/*">
+  <input type="file" id="subOrigInput" accept=".srt">
+  <input type="file" id="subTradInput" accept=".srt">
+
+  <!-- REPRODUCTOR HTML5 OCULTO -->
+  <audio id="player"></audio>
+
+  <!-- SCRIPT PRINCIPAL -->
+  <script src="app.js"></script>
+
+  <!-- LÓGICA DE CONTROL DE SESIÓN -->
+  <script>
+    let isRegisterMode = false;
+
+    async function checkUserStatus() {
+      try {
+        const res = await fetch('/api/user-status', { credentials: 'include' });
+        const data = await res.json();
+        const text = document.getElementById("userStatusText");
+        const btn = document.getElementById("btnAuthModal");
+        if (data.authenticated) {
+          text.textContent = `👤 ${data.username}`;
+          btn.textContent = "🚪 Salir";
+          btn.onclick = logoutUser;
+        } else {
+          text.textContent = "Invitado";
+          btn.textContent = "🔐 Entrar";
+          btn.onclick = () => document.getElementById("authModal").classList.remove("hidden");
+        }
+      } catch (err) {
+        console.warn("Servidor offline o inaccesible");
+      }
+    }
+
+    async function logoutUser() {
+      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      checkUserStatus();
+    }
+
+    document.getElementById("btnToggleAuthMode").onclick = () => {
+      isRegisterMode = !isRegisterMode;
+      document.getElementById("authTitle").textContent = isRegisterMode ? "Crear Cuenta" : "Iniciar Sesión";
+      document.getElementById("btnAuthSubmit").textContent = isRegisterMode ? "Registrarme" : "Entrar";
+      document.getElementById("btnToggleAuthMode").textContent = isRegisterMode ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate aquí";
+    };
+
+    document.getElementById("btnCloseAuth").onclick = () => {
+      document.getElementById("authModal").classList.add("hidden");
+    };
+
+    document.getElementById("authForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const u = document.getElementById("authUsername").value;
+      const p = document.getElementById("authPassword").value;
+      const endpoint = isRegisterMode ? '/api/register' : '/api/login';
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p }),
+          credentials: 'include'
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById("authModal").classList.add("hidden");
+          checkUserStatus();
+        } else {
+          alert(data.error || "Error en la solicitud");
+        }
+      } catch (err) {
+        alert("Error al conectar con el servidor.");
+      }
+    };
+
+    // Verificar sesión al cargar
+    checkUserStatus();
+  </script>
+</body>
+</html>

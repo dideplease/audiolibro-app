@@ -279,9 +279,10 @@
           </select>
         </div>
 
+        <!-- Botones cambiados a Carga de Carpeta de Subtítulos -->
         <div style="margin-top: 0.8rem; display: flex; gap: 0.4rem; justify-content: center;">
-          <button id="btnLoadSubOrig" style="font-size: 0.75rem; padding: 0.4rem;">+ Sub Orig (.srt)</button>
-          <button id="btnLoadSubTrad" style="font-size: 0.75rem; padding: 0.4rem;">+ Sub Trad (.srt)</button>
+          <button id="btnLoadSubOrig" style="font-size: 0.75rem; padding: 0.4rem;">📁 Carpetas Sub Orig (.srt)</button>
+          <button id="btnLoadSubTrad" style="font-size: 0.75rem; padding: 0.4rem;">📁 Carpetas Sub Trad (.srt)</button>
         </div>
       </div>
     </div>
@@ -356,8 +357,9 @@
   <input type="file" id="fileInput" multiple accept="audio/*">
   <input type="file" id="folderInput" webkitdirectory directory multiple>
   <input type="file" id="coverInput" accept="image/*">
-  <input type="file" id="subOrigInput" accept=".srt">
-  <input type="file" id="subTradInput" accept=".srt">
+  <!-- Inputs de Carpetas de Subtítulos -->
+  <input type="file" id="subOrigFolderInput" webkitdirectory directory multiple>
+  <input type="file" id="subTradFolderInput" webkitdirectory directory multiple>
 
   <!-- REPRODUCTOR HTML5 OCULTO -->
   <audio id="player"></audio>

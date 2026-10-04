@@ -22,7 +22,9 @@ let currentSubs = {
   original: [],
   translation: [],
   activeOrigIdx: -1,
-  activeTradIdx: -1
+  activeTradIdx: -1,
+  lastOrigIdx: -1,
+  lastTradIdx: -1
 };
 
 // Guardar referencias a URLs de portadas para revocarlas y evitar fugas de memoria
@@ -145,6 +147,7 @@ function katakanaToHiragana(str) {
 // ============================================================
 const SETTINGS_KEY = "audiolibro_settings_v1";
 const DEFAULT_SETTINGS = {
+  alwaysShowSubs: false,
   origColor: "#ffffff",
   origSize: 2.2,
   tradColor: "#b8b8b8",
@@ -182,6 +185,9 @@ function applySettingsToDOM() {
     trad.style.fontSize = settings.tradSize + "rem";
     trad.classList.toggle("blurred", settings.tradBlur);
   }
+
+  const setAlwaysShowSubs = document.getElementById("setAlwaysShowSubs");
+  if (setAlwaysShowSubs) setAlwaysShowSubs.checked = settings.alwaysShowSubs;
 
   const setOrigColor = document.getElementById("setOrigColor");
   if (setOrigColor) setOrigColor.value = settings.origColor;
@@ -433,7 +439,9 @@ async function loadSubtitlesForChapter(chapter) {
     original: [],
     translation: [],
     activeOrigIdx: -1,
-    activeTradIdx: -1
+    activeTradIdx: -1,
+    lastOrigIdx: -1,
+    lastTradIdx: -1
   };
 
   document.getElementById("subtitleOriginal").textContent = "";
@@ -496,7 +504,13 @@ async function wrapJapaneseInSpans(text) {
 function updateSubtitles(time) {
   const syncTime = time - settings.syncOffset;
 
-  const origIdx = findLineAtTime(currentSubs.original, syncTime);
+  let origIdx = findLineAtTime(currentSubs.original, syncTime);
+  if (origIdx >= 0) {
+    currentSubs.lastOrigIdx = origIdx;
+  } else if (settings.alwaysShowSubs) {
+    origIdx = findLastPassedLine(currentSubs.original, syncTime, currentSubs.lastOrigIdx);
+  }
+
   if (origIdx !== currentSubs.activeOrigIdx) {
     currentSubs.activeOrigIdx = origIdx;
     const el = document.getElementById("subtitleOriginal");
@@ -520,7 +534,13 @@ function updateSubtitles(time) {
     }
   }
 
-  const tradIdx = findLineAtTime(currentSubs.translation, syncTime);
+  let tradIdx = findLineAtTime(currentSubs.translation, syncTime);
+  if (tradIdx >= 0) {
+    currentSubs.lastTradIdx = tradIdx;
+  } else if (settings.alwaysShowSubs) {
+    tradIdx = findLastPassedLine(currentSubs.translation, syncTime, currentSubs.lastTradIdx);
+  }
+
   if (tradIdx !== currentSubs.activeTradIdx) {
     currentSubs.activeTradIdx = tradIdx;
     const el = document.getElementById("subtitleTranslation");
@@ -535,6 +555,23 @@ function findLineAtTime(lines, time) {
     if (time < lines[mid].start) hi = mid - 1;
     else if (time > lines[mid].end) lo = mid + 1;
     else { found = mid; break; }
+  }
+  return found;
+}
+
+function findLastPassedLine(lines, time, lastKnownIdx) {
+  if (!lines || lines.length === 0) return -1;
+  if (lastKnownIdx >= 0 && lastKnownIdx < lines.length && lines[lastKnownIdx].start <= time) {
+    let idx = lastKnownIdx;
+    while (idx + 1 < lines.length && lines[idx + 1].start <= time) {
+      idx++;
+    }
+    return idx;
+  }
+  let found = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].start <= time) found = i;
+    else break;
   }
   return found;
 }
@@ -701,7 +738,7 @@ async function renderLibrary() {
         </h3>
         <p class="author" data-action="edit-author" title="Clic para editar autor">
           <span class="author-text">${escapeHTML(meta.author) || "Autor desconocido"}</span>
-          <span class="edit-icon">✏️️</span>
+          <span class="edit-icon">✏</span>
           <span style="color:#666;font-size:0.75rem;">${chapterInfo}</span>
         </p>
         <p class="synopsis">${escapeHTML(meta.synopsis) || "Sin sinopsis disponible."}</p>
@@ -1224,7 +1261,7 @@ async function closeModal() {
   player.src = "";
   currentBook = null;
   currentChapterIndex = 0;
-  currentSubs = { original: [], translation: [], activeOrigIdx: -1, activeTradIdx: -1 };
+  currentSubs = { original: [], translation: [], activeOrigIdx: -1, activeTradIdx: -1, lastOrigIdx: -1, lastTradIdx: -1 };
   document.getElementById("subtitleOriginal").textContent = "";
   document.getElementById("subtitleTranslation").textContent = "";
   releaseWakeLock();
@@ -1454,6 +1491,14 @@ document.getElementById("btnSettings").onclick = () => {
 document.getElementById("btnCloseSettings").onclick = () => {
   document.getElementById("settingsPanel").classList.add("hidden");
 };
+
+document.getElementById("setAlwaysShowSubs").addEventListener("change", (e) => {
+  settings.alwaysShowSubs = e.target.checked;
+  saveSettings();
+  currentSubs.activeOrigIdx = -1;
+  currentSubs.activeTradIdx = -1;
+  updateSubtitles(player.currentTime);
+});
 
 document.getElementById("setOrigColor").addEventListener("input", (e) => {
   settings.origColor = e.target.value;

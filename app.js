@@ -1371,32 +1371,12 @@ function goToSubtitle(direction) {
 }
 
 // ============================================================
-// CARGA MANUAL Y CARPETA DE SUBTÍTULOS
+// CARGA Y ASIGNACIÓN POR CARPETAS DE SUBTÍTULOS
 // ============================================================
-// Crear o reutilizar un input oculto para seleccionar carpetas de subtítulos
-let subFolderInput = document.getElementById("subFolderInput");
-if (!subFolderInput) {
-  subFolderInput = document.createElement("input");
-  subFolderInput.type = "file";
-  subFolderInput.id = "subFolderInput";
-  subFolderInput.webkitdirectory = true;
-  subFolderInput.style.display = "none";
-  document.body.appendChild(subFolderInput);
-}
-
 const btnLoadSubOrig = document.getElementById("btnLoadSubOrig");
 if (btnLoadSubOrig) {
   btnLoadSubOrig.onclick = () => {
-    subFolderInput.dataset.subType = "folder";
-    subFolderInput.value = "";
-    subFolderInput.click();
-  };
-}
-
-const btnLoadSubTrad = document.getElementById("btnLoadSubTrad");
-if (btnLoadSubTrad) {
-  btnLoadSubTrad.onclick = () => {
-    const input = document.getElementById("subTradInput");
+    const input = document.getElementById("subOrigFolderInput");
     if (input) {
       input.value = "";
       input.click();
@@ -1404,83 +1384,90 @@ if (btnLoadSubTrad) {
   };
 }
 
-subFolderInput.addEventListener("change", async (e) => {
-  const allSubFiles = Array.from(e.target.files).filter(f => isSubtitleFile(f.name));
-  if (allSubFiles.length === 0 || !currentBook) return;
+const btnLoadSubTrad = document.getElementById("btnLoadSubTrad");
+if (btnLoadSubTrad) {
+  btnLoadSubTrad.onclick = () => {
+    const input = document.getElementById("subTradFolderInput");
+    if (input) {
+      input.value = "";
+      input.click();
+    }
+  };
+}
 
-  const meta = await idbGet(STORE_META, currentBook.id);
-  if (!meta) return;
+// Cargar carpeta completa para Subtítulos Originales
+const subOrigFolderInput = document.getElementById("subOrigFolderInput");
+if (subOrigFolderInput) {
+  subOrigFolderInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files).filter(f => isSubtitleFile(f.name));
+    if (files.length === 0 || !currentBook) {
+      alert("No se encontraron archivos SRT válidos en la carpeta seleccionada.");
+      return;
+    }
 
-  for (let i = 0; i < meta.chapters.length; i++) {
-    const chapter = meta.chapters[i];
-    const chapterBaseName = chapter.fileName.replace(/\.[^/.]+$/, "").toLowerCase();
+    const meta = await idbGet(STORE_META, currentBook.id);
+    if (!meta) return;
 
-    for (const sub of allSubFiles) {
-      const subBaseName = sub.name.replace(/\.[^/.]+$/, "").toLowerCase();
-      if (subBaseName !== chapterBaseName) continue;
+    let matchCount = 0;
+    for (let i = 0; i < meta.chapters.length; i++) {
+      const chapter = meta.chapters[i];
+      const chapterBase = chapter.fileName.replace(/\.[^/.]+$/, "").toLowerCase();
 
-      const type = detectFolderType(sub.webkitRelativePath || sub.name);
+      // Buscar el archivo SRT correspondiente al nombre del capítulo
+      const matchedSub = files.find(f => f.name.replace(/\.[^/.]+$/, "").toLowerCase() === chapterBase);
 
-      if (type === "original" || !type) {
+      if (matchedSub) {
         const subId = currentBook.id + "_sub_orig_ch" + i;
-        await idbPut(STORE_SUBTITLES, { id: subId, blob: sub });
+        await idbPut(STORE_SUBTITLES, { id: subId, blob: matchedSub });
         meta.chapters[i].subtitleOriginalId = subId;
-      } else if (type === "translation") {
-        const subId = currentBook.id + "_sub_trad_ch" + i;
-        await idbPut(STORE_SUBTITLES, { id: subId, blob: sub });
-        meta.chapters[i].subtitleTranslationId = subId;
+        matchCount++;
       }
     }
-  }
 
-  await idbPut(STORE_META, meta);
-  currentBook = meta;
-  await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
-  updateSubtitles(player.currentTime);
-});
-
-const subOrigInput = document.getElementById("subOrigInput");
-if (subOrigInput) {
-  subOrigInput.addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file || !currentBook) return;
-    const chapter = currentBook.chapters[currentChapterIndex];
-    if (!chapter) return;
-
-    const subId = currentBook.id + "_sub_orig_ch" + currentChapterIndex;
-    await idbPut(STORE_SUBTITLES, { id: subId, blob: file });
-
-    const meta = await idbGet(STORE_META, currentBook.id);
-    if (meta && meta.chapters[currentChapterIndex]) {
-      meta.chapters[currentChapterIndex].subtitleOriginalId = subId;
-      await idbPut(STORE_META, meta);
-      currentBook = meta;
-    }
+    await idbPut(STORE_META, meta);
+    currentBook = meta;
     await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
+    updateSubtitles(player.currentTime);
+    alert(`Se vincularon ${matchCount} subtítulos originales.`);
   });
 }
 
-const subTradInput = document.getElementById("subTradInput");
-if (subTradInput) {
-  subTradInput.addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file || !currentBook) return;
-    const chapter = currentBook.chapters[currentChapterIndex];
-    if (!chapter) return;
-
-    const subId = currentBook.id + "_sub_trad_ch" + currentChapterIndex;
-    await idbPut(STORE_SUBTITLES, { id: subId, blob: file });
+// Cargar carpeta completa para Subtítulos Traducidos
+const subTradFolderInput = document.getElementById("subTradFolderInput");
+if (subTradFolderInput) {
+  subTradFolderInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files).filter(f => isSubtitleFile(f.name));
+    if (files.length === 0 || !currentBook) {
+      alert("No se encontraron archivos SRT válidos en la carpeta seleccionada.");
+      return;
+    }
 
     const meta = await idbGet(STORE_META, currentBook.id);
-    if (meta && meta.chapters[currentChapterIndex]) {
-      meta.chapters[currentChapterIndex].subtitleTranslationId = subId;
-      await idbPut(STORE_META, meta);
-      currentBook = meta;
+    if (!meta) return;
+
+    let matchCount = 0;
+    for (let i = 0; i < meta.chapters.length; i++) {
+      const chapter = meta.chapters[i];
+      const chapterBase = chapter.fileName.replace(/\.[^/.]+$/, "").toLowerCase();
+
+      // Buscar el archivo SRT correspondiente al nombre del capítulo
+      const matchedSub = files.find(f => f.name.replace(/\.[^/.]+$/, "").toLowerCase() === chapterBase);
+
+      if (matchedSub) {
+        const subId = currentBook.id + "_sub_trad_ch" + i;
+        await idbPut(STORE_SUBTITLES, { id: subId, blob: matchedSub });
+        meta.chapters[i].subtitleTranslationId = subId;
+        matchCount++;
+      }
     }
+
+    await idbPut(STORE_META, meta);
+    currentBook = meta;
     await loadSubtitlesForChapter(currentBook.chapters[currentChapterIndex]);
+    updateSubtitles(player.currentTime);
+    alert(`Se vincularon ${matchCount} subtítulos traducidos.`);
   });
 }
-
 // ============================================================
 // PANEL DE AJUSTES
 // ============================================================
